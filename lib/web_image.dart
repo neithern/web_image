@@ -101,25 +101,26 @@ class ShrinkImageStreamCompleter extends MultiFrameImageStreamCompleter {
     final shouldShrink = !(image is _ShrinkedImage);
     final size = shouldShrink ? _IntSize.scale(image.image, width, height) : null;
     if (shouldShrink && _shouldShrinkImage(image.image, size.width, size.height)) {
-      final shrinkedImage = _shrinkImage(image.image, size);
-      if (_singleFrameProviders.remove(key)) {
-        _oneFrameCompleter = OneFrameImageStreamCompleter(Future.sync(() => shrinkedImage));
-        imageCache.evict(key);
-        imageCache.putIfAbsent(key, () => _oneFrameCompleter);
-        super.setImage(shrinkedImage);
-      }
+      _shrinkImage(image.image, size).then((shrinkedImage) {
+        if (_singleFrameProviders.remove(key)) {
+          _oneFrameCompleter = OneFrameImageStreamCompleter(Future.sync(() => shrinkedImage));
+          imageCache.evict(key);
+          imageCache.putIfAbsent(key, () => _oneFrameCompleter);
+          super.setImage(shrinkedImage);
+        }
+      });
     } else {
       super.setImage(image);
     }
   }
 
-  _ShrinkedImage _shrinkImage(ui.Image image, _IntSize size) {
+  Future<_ShrinkedImage> _shrinkImage(ui.Image image, _IntSize size) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final paint = Paint()..filterQuality = FilterQuality.low;
     canvas.scale(size.width / image.width.toDouble());
     canvas.drawImage(image, Offset.zero, paint);
-    final image2 = recorder.endRecording().toImage(size.width, size.height);
+    final image2 = await recorder.endRecording().toImage(size.width, size.height);
     print('shrink image: $key, ${image.width}x${image.height} -> ${image2.width}x${image2.height}');
     return _ShrinkedImage(image2);
   }
