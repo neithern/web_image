@@ -50,6 +50,9 @@ class CachedHttp {
     IOSink out;
     try {
       final response = await openUrl(url, method: method, headers: headers);
+      if (response.statusCode < HttpStatus.ok || response.statusCode >= HttpStatus.multipleChoices)
+        throw Exception(response.reasonPhrase);
+
       out = tmpFile.openWrite();
       await response.pipe(out);
       await tmpFile.rename(file.path);

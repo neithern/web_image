@@ -64,10 +64,15 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
     final Uint8List bytes = await file.readAsBytes();
     if (bytes == null || bytes.lengthInBytes == 0) throw Exception('Empty cache: ${key.url}, ${file.path}');
 
-    final codec = await PaintingBinding.instance.instantiateImageCodec(bytes);
-    if (codec.frameCount == 1) _singleFrameProviders.add(key);
-    print('load image: ${key.url}, ${key.width}x${key.height}@${key.scale}');
-    return codec;
+    try {
+      final codec = await PaintingBinding.instance.instantiateImageCodec(bytes);
+      if (codec.frameCount == 1) _singleFrameProviders.add(key);
+      print('load image: ${key.url}, ${key.width}x${key.height}@${key.scale}');
+      return codec;
+    } catch (e) {
+      print('load image failed: ${key.url}, ${key.width}x${key.height}@${key.scale}, $e');
+      throw e;
+    }
   }
 }
 
