@@ -151,7 +151,7 @@ class LruFileCache {
     values[1] = size;
     values[2] = exists ? (await file.lastModified()).millisecondsSinceEpoch : 0;
     return _lock.synchronized(() async {
-      final position = _updateCacheNoLock(key, size, ifAbsent: () => _newPosition());
+      final position = await _updateCacheNoLock(key, size, ifAbsent: () => _newPosition());
       await _indexFile.setPosition(position);
       await _indexFile.writeFrom(values.buffer.asUint8List());
     });
@@ -166,13 +166,13 @@ class LruFileCache {
     return position;
   }
 
-  int _updateCacheNoLock(int key, int size, {int ifAbsent()}) {
+  Future<int> _updateCacheNoLock(int key, int size, {int ifAbsent()}) async {
     // ensure size of cache
     final maximumSize = maxSize - size;
     while (_size > maximumSize && _cache.isNotEmpty) {
       int first = _cache.keys.first;
       int pos = _cache.remove(first);
-      if (pos != null) _size -= _removeAtNoLock(first, pos);
+      if (pos != null) _size -= await _removeAtNoLock(first, pos);
     }
 
     // update or insert new cache
@@ -183,25 +183,25 @@ class LruFileCache {
       return pos;
     }, ifAbsent: ifAbsent);
     _size += size;
-    print('DiskCache update: $size bytes of ${key.toRadixString(16)}, total ${_cache.length} items $_size bytes');
     return position;
   }
 
-  int _removeAtNoLock(int key, int position) {
+  Future<int> _removeAtNoLock(int key, int position) async {
     final values = Uint64List(1);
     final buffer = values.buffer.asUint8List();
-    _indexFile.setPositionSync(position + _offsetOfSize); // write size as 0
-    _indexFile.readIntoSync(buffer);
+    await _indexFile.setPosition(position + _offsetOfSize);
+    await _indexFile.readInto(buffer);
     int size = values[0];
     values[0] = 0;
-    _indexFile.writeFromSync(buffer);
+    await _indexFile.setPosition(position + _offsetOfSize);
+    await _indexFile.writeFrom(buffer); // write size as 0
     _recycledPositions.add(position);
  
     final file = _cacheFileForKey(key);
     final fileInfo = getIndexFile(file);
-    deleteFile(file);
-    deleteFile(fileInfo);
-    print('DiskCache remove: $size bytes of ${key.toRadixString(16)}');
+    await deleteFile(file);
+    await deleteFile(fileInfo);
+    print('DiskCache remove: $size bytes of ${key.toRadixString(16)}, total ${_cache.length} items $_size bytes');
     return size;
   }
 

@@ -104,7 +104,7 @@ class CachedHttp {
       out.close().then((_) => cache.update(hashUrl(url), file));
       out = null;
     } catch (e) {
-      deleteFile(file);
+      await deleteFile(file);
       print('HttpCache decode json $url: $e');
       if (result != null)
         return result;
