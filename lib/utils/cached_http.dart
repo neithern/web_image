@@ -55,7 +55,7 @@ class CachedHttp {
         throw Exception(response.reasonPhrase);
 
       out = tmpFile.openWrite();
-      await response.cast<List<int>>().pipe(out);
+      await response.pipe(out);
       await tmpFile.rename(file.path);
       // write response headers
       RandomAccessFile raf;
