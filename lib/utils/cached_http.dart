@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:synchronized/synchronized.dart';
 
@@ -54,7 +55,7 @@ class CachedHttp {
         throw Exception(response.reasonPhrase);
 
       out = tmpFile.openWrite();
-      await response.pipe(out);
+      await response.cast<List<int>>().pipe(out);
       await tmpFile.rename(file.path);
       // write response headers
       RandomAccessFile raf;
@@ -85,10 +86,10 @@ class CachedHttp {
       final Uint8List bytes = await file.readAsBytes();
       if (bytes.lengthInBytes > 4 && bytes.buffer.asUint32List(0, 1)[0] == _magicJson) {
         // read from binary message
-        return StandardMessageCodec().decodeMessage(ByteData.view(bytes.buffer, 4));
+        return await compute(_decodeJsonFromBinary, ByteData.view(bytes.buffer, 4));
       }
 
-      result = JSONMessageCodec().decodeMessage(ByteData.view(bytes.buffer));
+      result = await compute(_decodeJsonFromString, ByteData.view(bytes.buffer));
       out = file.openWrite(encoding: null);
 
       // write magic head
@@ -97,12 +98,14 @@ class CachedHttp {
       out.add(head);
 
       // convert to binary message
-      final data2 = StandardMessageCodec().encodeMessage(result);
+      final data2 = await compute(_encodeJsonToBinary, result);
       out.add(data2.buffer.asUint8List(0, data2.lengthInBytes));
 
       // close and update the cache
-      out.close().then((_) => cache.update(hashUrl(url), file));
+      await out.close();
       out = null;
+
+      cache.update(hashUrl(url), file);
     } catch (e) {
       await deleteFile(file);
       print('HttpCache decode json $url: $e');
@@ -113,18 +116,6 @@ class CachedHttp {
       await out?.close();
     }
     return result;
-  }
-
-  Future _getResponseHeaders(String url, File cacheFile, Map<String, String> responseHeaders) async {
-    // read and check response headers
-    RandomAccessFile raf;
-    try {
-      final indexFile = LruFileCache.getIndexFile(cacheFile);
-      raf = await indexFile.open(mode: FileMode.read);
-      await CacheIndex.readHeaders(url, responseHeaders, raf);
-    } finally {
-      await raf?.close();
-    }
   }
 
   Future<Map<String, String>> getCachedResponseHeaders(String url) async {
@@ -165,6 +156,24 @@ class CachedHttp {
     final request = await client.openUrl(method ?? 'GET', Uri.parse(url));
     headers?.forEach((k, v) => request.headers.add(k, v));
     return request.close();
+  }
+
+  static dynamic _decodeJsonFromBinary(ByteData data) => StandardMessageCodec().decodeMessage(data);
+
+  static dynamic _decodeJsonFromString(ByteData data) => JSONMessageCodec().decodeMessage(data);
+
+  static ByteData _encodeJsonToBinary(dynamic json) => StandardMessageCodec().encodeMessage(json);
+
+  static Future _getResponseHeaders(String url, File cacheFile, Map<String, String> responseHeaders) async {
+    // read and check response headers
+    RandomAccessFile raf;
+    try {
+      final indexFile = LruFileCache.getIndexFile(cacheFile);
+      raf = await indexFile.open(mode: FileMode.read);
+      await CacheIndex.readHeaders(url, responseHeaders, raf);
+    } finally {
+      await raf?.close();
+    }
   }
 }
 

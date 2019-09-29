@@ -87,16 +87,16 @@ class ShrinkImageStreamCompleter extends MultiFrameImageStreamCompleter {
     : super(codec: codec, scale: scale);
 
   @override
-  void addListener(ImageListener listener, { ImageErrorListener onError }) {
+  void addListener(ImageStreamListener listener) {
     if (_oneFrameCompleter != null) {
-      _oneFrameCompleter.addListener(listener, onError: onError);
+      _oneFrameCompleter.addListener(listener);
     } else {
-      super.addListener(listener, onError: onError);
+      super.addListener(listener);
     }
   }
 
   @override
-  void removeListener(ImageListener listener) {
+  void removeListener(ImageStreamListener listener) {
     _oneFrameCompleter?.removeListener(listener);
     super.removeListener(listener);
   }
