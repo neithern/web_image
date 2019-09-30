@@ -89,7 +89,9 @@ class CachedHttp {
         return await compute(_decodeJsonFromBinary, ByteData.view(bytes.buffer, 4));
       }
 
-      result = await compute(_decodeJsonFromString, ByteData.view(bytes.buffer));
+      final entry = await compute(_jsonStringToBinary, ByteData.view(bytes.buffer));
+      result = entry.key;
+
       out = file.openWrite(encoding: null);
 
       // write magic head
@@ -97,8 +99,8 @@ class CachedHttp {
       head.buffer.asUint32List()[0] = _magicJson;
       out.add(head);
 
-      // convert to binary message
-      final data2 = await compute(_encodeJsonToBinary, result);
+      // write binary message
+      final data2 = entry.value;
       out.add(data2.buffer.asUint8List(0, data2.lengthInBytes));
 
       // close and update the cache
@@ -160,9 +162,11 @@ class CachedHttp {
 
   static dynamic _decodeJsonFromBinary(ByteData data) => StandardMessageCodec().decodeMessage(data);
 
-  static dynamic _decodeJsonFromString(ByteData data) => JSONMessageCodec().decodeMessage(data);
-
-  static ByteData _encodeJsonToBinary(dynamic json) => StandardMessageCodec().encodeMessage(json);
+  static MapEntry<dynamic, ByteData> _jsonStringToBinary(ByteData data) {
+    final json = JSONMessageCodec().decodeMessage(data);
+    data = StandardMessageCodec().encodeMessage(json);
+    return MapEntry<dynamic, ByteData>(json, data);
+  }
 
   static Future _getResponseHeaders(String url, File cacheFile, Map<String, String> responseHeaders) async {
     // read and check response headers
