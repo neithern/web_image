@@ -86,7 +86,7 @@ class CachedHttp {
       final Uint8List bytes = await file.readAsBytes();
       if (bytes.lengthInBytes > 4 && bytes.buffer.asUint32List(0, 1)[0] == _magicJson) {
         // read from binary message
-        return await compute(_decodeJsonFromBinary, ByteData.view(bytes.buffer, 4));
+        return await StandardMessageCodec().decodeMessage(ByteData.view(bytes.buffer, 4));
       }
 
       final entry = await compute(_jsonStringToBinary, ByteData.view(bytes.buffer));
@@ -160,12 +160,10 @@ class CachedHttp {
     return request.close();
   }
 
-  static dynamic _decodeJsonFromBinary(ByteData data) => StandardMessageCodec().decodeMessage(data);
-
   static MapEntry<dynamic, ByteData> _jsonStringToBinary(ByteData data) {
     final json = JSONMessageCodec().decodeMessage(data);
-    data = StandardMessageCodec().encodeMessage(json);
-    return MapEntry<dynamic, ByteData>(json, data);
+    final data2 = StandardMessageCodec().encodeMessage(json);
+    return MapEntry<dynamic, ByteData>(json, data2);
   }
 
   static Future _getResponseHeaders(String url, File cacheFile, Map<String, String> responseHeaders) async {
