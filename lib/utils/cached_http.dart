@@ -86,10 +86,11 @@ class CachedHttp {
       final Uint8List bytes = await file.readAsBytes();
       if (bytes.lengthInBytes > 4 && bytes.buffer.asUint32List(0, 1)[0] == _magicJson) {
         // read from binary message
-        return await StandardMessageCodec().decodeMessage(ByteData.view(bytes.buffer, 4));
+        final data = bytes.buffer.asByteData(4);
+        return await StandardMessageCodec().decodeMessage(data);
       }
 
-      final entry = await compute(_jsonStringToBinary, ByteData.view(bytes.buffer));
+      final entry = await compute(_jsonStringToBinary, bytes.buffer.asByteData());
       result = entry.key;
 
       out = file.openWrite(encoding: null);
@@ -109,11 +110,9 @@ class CachedHttp {
 
       cache.update(hashUrl(url), file);
     } catch (e) {
-      await deleteFile(file);
       print('HttpCache decode json $url: $e');
-      if (result != null)
-        return result;
-      throw e;
+      await deleteFile(file);
+      if (result == null) throw e;
     } finally {
       await out?.close();
     }

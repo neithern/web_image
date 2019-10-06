@@ -7,7 +7,7 @@ class BufferReader extends ReadBuffer {
 
   BufferReader(ByteData data) : super(data);
 
-  factory BufferReader.from(Uint8List data) => BufferReader(ByteData.view(data.buffer));
+  factory BufferReader.from(Uint8List data) => BufferReader(data.buffer.asByteData());
 
   int getSize() {
     final int value = getUint8();

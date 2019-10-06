@@ -110,7 +110,7 @@ class PersistValues {
       try {
         _path = dir.path + '/' + _name;
         final Uint8List bytes = await File(_path).readAsBytes();
-        final data = ByteData.view(bytes.buffer);
+        final data = bytes.buffer.asByteData();
         final map = StandardMessageCodec().decodeMessage(data);
         if (map is Map)
           map.forEach((key, value) => _cache[key] = value);
