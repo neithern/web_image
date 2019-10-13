@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-flutter clean
+# flutter clean
 git clean -xdf
 
 cd ..
