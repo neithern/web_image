@@ -64,8 +64,16 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
     final Uint8List bytes = await file.readAsBytes();
     if (bytes == null || bytes.lengthInBytes == 0) throw Exception('Empty cache: ${key.url}, ${file.path}');
 
+    final density = ui.window.devicePixelRatio;
+    final targetWidget = key.width != null ? (key.width * density).round() : null;
+    final targetHeight = key.height != null ? (key.height * density).round() : null;
+
     try {
-      final codec = await PaintingBinding.instance.instantiateImageCodec(bytes);
+      final codec = await ui.instantiateImageCodec(bytes,
+       // need only one to keep aspect ratio
+        targetWidth: targetWidget,
+        targetHeight: targetWidget == null ? targetHeight : null,
+      );
       if (codec.frameCount == 1) _singleFrameProviders.add(key);
       print('load image: ${key.url}, ${key.width}x${key.height}@${key.scale}');
       return codec;
@@ -146,10 +154,10 @@ class _IntSize {
 
   factory _IntSize.scale(ui.Image image, double widgetWidth, double widgetHeight) {
     final density = ui.window.devicePixelRatio;
-    final width2 = (density * (widgetWidth ?? 0.0)).round();
-    final height2 = (density * (widgetHeight ?? 0.0)).round();
-    double scaleX = width2.toDouble() / image.width;
-    double scaleY = height2.toDouble() / image.height;
+    final width2 = (widgetWidth ?? 0.0) * density;
+    final height2 = (widgetHeight ?? 0.0) * density;
+    double scaleX = width2 / image.width;
+    double scaleY = height2 / image.height;
     double scale = scaleX > scaleY ? scaleX : scaleY;
     return _IntSize((image.width * scale).round(), (image.height * scale).round());
   }
