@@ -61,26 +61,36 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
     final file = await http.getFile(key.url, headers: key.headers);
     if (file == null) throw Exception('No cache: ${key.url}');
 
-    final Uint8List bytes = await file.readAsBytes();
-    if (bytes == null || bytes.lengthInBytes == 0) throw Exception('Empty cache: ${key.url}, ${file.path}');
+    final Uint8List data = await file.readAsBytes();
+    if (data == null || data.lengthInBytes == 0) throw Exception('Empty cache: ${key.url}, ${file.path}');
 
     final density = ui.window.devicePixelRatio;
-    final targetWidget = key.width != null ? (key.width * density).round() : null;
+    final targetWidth = key.width != null ? (key.width * density).round() : null;
     final targetHeight = key.height != null ? (key.height * density).round() : null;
 
+    // need only one to keep aspect ratio
+    var result = await _instantiateImageCodec(key, data,
+                            targetWidth: targetWidth,
+                            targetHeight: targetWidth == null ? targetHeight : null);
+    if (result != null) return result;
+    else if (targetWidth != null || targetHeight != null)
+      result = await _instantiateImageCodec(key, data);
+    return result;
+  }
+
+  static Future<ui.Codec> _instantiateImageCodec(WebImageProvider key, Uint8List data,
+                          {int targetWidth, int targetHeight}) async {
     try {
-      final codec = await ui.instantiateImageCodec(bytes,
-       // need only one to keep aspect ratio
-        targetWidth: targetWidget,
-        targetHeight: targetWidget == null ? targetHeight : null,
+      final codec = await ui.instantiateImageCodec(data,
+        targetWidth: targetWidth,
+        targetHeight: targetHeight,
       );
       if (codec.frameCount == 1) _singleFrameProviders.add(key);
-      print('load image: ${key.url}, ${key.width}x${key.height}@${key.scale}');
       return codec;
     } catch (e) {
       print('load image failed: ${key.url}, ${key.width}x${key.height}@${key.scale}, $e');
-      throw e;
     }
+    return null;
   }
 }
 
@@ -119,8 +129,8 @@ class ShrinkImageStreamCompleter extends MultiFrameImageStreamCompleter {
           _oneFrameCompleter = OneFrameImageStreamCompleter(Future.sync(() => shrinkedImage));
           imageCache.evict(key);
           imageCache.putIfAbsent(key, () => _oneFrameCompleter);
-          super.setImage(shrinkedImage);
         }
+        super.setImage(shrinkedImage);
       });
     } else {
       super.setImage(image);
