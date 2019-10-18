@@ -5,13 +5,13 @@ author: nanling.z@gmail.com
 homepage: github.com/neithern
 
 environment:
-  sdk: ">=2.1.0 <3.0.0"
+  sdk: '>=2.3.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
-  path_provider: ^0.4.1
+  path_provider: ^1.3.0
   synchronized: ^1.5.3
 
 dev_dependencies:

@@ -44,6 +44,7 @@ class LruFileCache {
 
   LruFileCache(this.directory, this.maxSize);
 
+  int get count => _cache.length;
   int get size => _size;
 
   Future open() async { 
