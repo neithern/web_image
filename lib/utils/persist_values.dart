@@ -6,10 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:synchronized/synchronized.dart';
 
-Future<Directory> libraryDirectory() async {
+Future<Directory> documentsDirectory() async {
   Directory dir;
   try {
-    dir = await getLibraryDirectory();
+    dir = await getApplicationDocumentsDirectory();
   } on MissingPluginException catch (_) {
     dir = Directory.systemTemp.parent;  // for other VMs
   }
@@ -105,7 +105,7 @@ class PersistValues {
   }
 
   Future _load() async {
-    final dir = await libraryDirectory();
+    final dir = await documentsDirectory();
     return _lock.synchronized(() async {
       try {
         _path = dir.path + '/' + _name;
