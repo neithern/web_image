@@ -59,10 +59,14 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
   static Future<ui.Codec> _loadAsync(WebImageProvider key) async {
     final http = await CachedHttp.singleton();
     final file = await http.getFile(key.url, headers: key.headers);
-    if (file == null) throw Exception('No cache: ${key.url}');
-
-    final Uint8List data = await file.readAsBytes();
-    if (data == null || data.lengthInBytes == 0) throw Exception('Empty cache: ${key.url}, ${file.path}');
+    Uint8List data;
+    try {
+      data = await file.readAsBytes();
+      if (data == null || data.lengthInBytes == 0) throw Exception('Empty cache: ${key.url}, ${file.path}');
+    } catch (e) {
+      print('Load failed: ${key.url}, ${file.path}');
+      return null;
+    }
 
     final density = ui.window.devicePixelRatio;
     final targetWidth = key.width != null ? (key.width * density).round() : null;
@@ -70,8 +74,8 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
 
     // need only one to keep aspect ratio
     var result = await _instantiateImageCodec(key, data,
-                            targetWidth: targetWidth,
-                            targetHeight: targetWidth == null ? targetHeight : null);
+                        targetWidth: targetWidth,
+                        targetHeight: targetWidth == null ? targetHeight : null);
     if (result != null) return result;
     else if (targetWidth != null || targetHeight != null)
       result = await _instantiateImageCodec(key, data);
@@ -150,9 +154,9 @@ class ShrinkImageStreamCompleter extends MultiFrameImageStreamCompleter {
 
   static bool _shouldShrinkImage(ui.Image image, int width, int height) {
     if (width > 0 && height > 0)
-      return image.width > width && image.height > height;
+      return image.width > width * 9 / 8 && image.height > height * 9 / 8;
     else
-      return (width > 0 && image.width > width) || (height > 0 && image.height > height);
+      return (width > 0 && image.width > width * 9 / 8) || (height > 0 && image.height > height * 9 / 8);
   }
 }
 
