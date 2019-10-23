@@ -36,7 +36,6 @@ class CachedHttp {
   }
 
   final LruFileCache cache;
-  final client = HttpClient();
   final _loading = Map<String, _Item>();
 
   CachedHttp._(Directory dir) : cache = LruFileCache(dir, defaultMaxSize);
@@ -154,7 +153,7 @@ class CachedHttp {
 
   Future<HttpClientResponse> openUrl(String url, {String method,
       Map<String, String> headers}) async {
-    final request = await client.openUrl(method ?? 'GET', Uri.parse(url));
+    final request = await HttpClient().openUrl(method ?? 'GET', Uri.parse(url));
     headers?.forEach((k, v) => request.headers.add(k, v));
     return request.close();
   }
