@@ -68,6 +68,7 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
   String toString() => '$runtimeType($url, ${width}x$height@$scale)';
 
   static Future<ui.Codec> _loadAsync(WebImageProvider key, StreamController<ImageChunkEvent> chunkEvents) async {
+    // print('load web image: ${key.url}');
     final http = await CachedHttp.singleton();
     final file = await http.getFile(key.url, headers: key.headers, autoCompress: false, chunkEvents: chunkEvents);
     chunkEvents?.close();
@@ -135,7 +136,7 @@ class ShrinkImageStreamCompleter extends MultiFrameImageStreamCompleter {
     canvas.scale(size.width / image.width.toDouble());
     canvas.drawImage(image, Offset.zero, paint);
     final image2 = await recorder.endRecording().toImage(size.width, size.height);
-    print('shrink image: $key, ${image.width}x${image.height} -> ${image2.width}x${image2.height}');
+    // print('shrink image: $key, ${image.width}x${image.height} -> ${image2.width}x${image2.height}');
     return _ShrinkedImage(image2);
   }
 

@@ -90,7 +90,6 @@ class CachedHttp {
         } catch (error, stackTrace) {
           completer.completeError(error, stackTrace);
           subscription.cancel();
-          return;
         }
       }
     });
