@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -7,14 +8,23 @@ import 'package:flutter/widgets.dart';
 import 'utils/cached_http.dart';
 
 class WebImage extends Image {
-  WebImage(String url, {double width, double height, BoxFit fit, double scale = 1.0, bool shrink = true, Map<String, String> headers, Key key}) : super(
-    key: key,
+  WebImage(String url, {Map<String, String> headers,
+          double width, double height, BoxFit fit,
+          double scale = 1.0, bool shrink = true,
+          ImageLoadingBuilder loadingBuilder,
+          Key key}) : super(
+    image: WebImageProvider(url,
+      headers: headers,
+      scale: scale,
+      shrink: shrink,
+      width: width,
+      height: height
+    ),
     width: width, height: height, fit: fit,
-    image: WebImageProvider(url, scale: scale, shrink: shrink, width: width, height: height, headers: headers)
+    loadingBuilder: loadingBuilder,
+    key: key,
   );
 }
-
-final _singleFrameProviders = Set<ImageProvider>();
 
 class WebImageProvider extends ImageProvider<WebImageProvider> {
   final String url;
@@ -33,10 +43,11 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
 
   @override
   ImageStreamCompleter load(WebImageProvider key) {
-    final codec = _loadAsync(key);
+    final chunkEvents = StreamController<ImageChunkEvent>();
+    final codec = _loadAsync(key, chunkEvents);
     return (shrink ?? true)
-      ? ShrinkImageStreamCompleter(codec, key, width: width, height: height, scale: scale)
-      : MultiFrameImageStreamCompleter(codec: codec, scale: scale);
+      ? ShrinkImageStreamCompleter(codec, key, width: width, height: height, scale: scale, chunkEvents: chunkEvents.stream)
+      : MultiFrameImageStreamCompleter(codec: codec, scale: scale, chunkEvents: chunkEvents.stream);
   }
 
   @override
@@ -56,9 +67,11 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
   @override
   String toString() => '$runtimeType($url, ${width}x$height@$scale)';
 
-  static Future<ui.Codec> _loadAsync(WebImageProvider key) async {
+  static Future<ui.Codec> _loadAsync(WebImageProvider key, StreamController<ImageChunkEvent> chunkEvents) async {
     final http = await CachedHttp.singleton();
-    final file = await http.getFile(key.url, headers: key.headers);
+    final file = await http.getFile(key.url, headers: key.headers, autoCompress: false, chunkEvents: chunkEvents);
+    chunkEvents?.close();
+
     Uint8List data;
     try {
       data = await file.readAsBytes();
@@ -85,12 +98,10 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
   static Future<ui.Codec> _instantiateImageCodec(WebImageProvider key, Uint8List data,
                           {int targetWidth, int targetHeight}) async {
     try {
-      final codec = await ui.instantiateImageCodec(data,
+      return await ui.instantiateImageCodec(data,
         targetWidth: targetWidth,
         targetHeight: targetHeight,
       );
-      if (codec.frameCount == 1) _singleFrameProviders.add(key);
-      return codec;
     } catch (e) {
       print('load image failed: ${key.url}, ${key.width}x${key.height}@${key.scale}, $e');
     }
@@ -103,39 +114,15 @@ class ShrinkImageStreamCompleter extends MultiFrameImageStreamCompleter {
   double width;
   double height;
 
-  OneFrameImageStreamCompleter _oneFrameCompleter;
-
-  ShrinkImageStreamCompleter(Future<ui.Codec> codec, this.key, {this.width, this.height, double scale})
-    : super(codec: codec, scale: scale);
-
-  @override
-  void addListener(ImageStreamListener listener) {
-    if (_oneFrameCompleter != null) {
-      _oneFrameCompleter.addListener(listener);
-    } else {
-      super.addListener(listener);
-    }
-  }
-
-  @override
-  void removeListener(ImageStreamListener listener) {
-    _oneFrameCompleter?.removeListener(listener);
-    super.removeListener(listener);
-  }
+  ShrinkImageStreamCompleter(Future<ui.Codec> codec, this.key, {this.width, this.height, double scale, Stream<ImageChunkEvent> chunkEvents})
+    : super(codec: codec, scale: scale, chunkEvents: chunkEvents);
 
   @override
   void setImage(ImageInfo image) {
     final shouldShrink = !(image is _ShrinkedImage);
     final size = shouldShrink ? _IntSize.scale(image.image, width, height) : null;
     if (shouldShrink && _shouldShrinkImage(image.image, size.width, size.height)) {
-      _shrinkImage(image.image, size).then((shrinkedImage) {
-        if (_singleFrameProviders.remove(key)) {
-          _oneFrameCompleter = OneFrameImageStreamCompleter(Future.sync(() => shrinkedImage));
-          imageCache.evict(key);
-          imageCache.putIfAbsent(key, () => _oneFrameCompleter);
-        }
-        super.setImage(shrinkedImage);
-      });
+      _shrinkImage(image.image, size).then(super.setImage);
     } else {
       super.setImage(image);
     }

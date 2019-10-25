@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:synchronized/synchronized.dart';
@@ -44,18 +46,56 @@ class CachedHttp {
     await cache.open();
   }
 
-  Future<bool> downloadFile(String url, File file, {String method,
-      Map<String, String> headers}) async {
+  Future<bool> downloadFile(String url, File file,
+                          {String method, Map<String, String> headers, bool autoCompress,
+                          StreamController<ImageChunkEvent> chunkEvents}) async {
+    final Completer<bool> completer = Completer<bool>.sync();
+    HttpClientResponse response;
+    try {
+      response = await openUrl(url,
+        method: method,
+        headers: headers,
+        autoCompress: autoCompress,
+      );
+      if (response.statusCode < HttpStatus.ok || response.statusCode >= HttpStatus.multipleChoices)
+        throw Exception(response.reasonPhrase);
+    } catch (error, stackTrace) {
+      completer.completeError(error, stackTrace);
+      return false;
+    }
+
     final tmpFile = File(file.path + '.p');
     IOSink out;
     try {
-      final response = await openUrl(url, method: method, headers: headers);
-      if (response.statusCode < HttpStatus.ok || response.statusCode >= HttpStatus.multipleChoices)
-        throw Exception(response.reasonPhrase);
-
       out = tmpFile.openWrite();
-      await response.pipe(out);
-      await tmpFile.rename(file.path);
+    } catch (error, stackTrace) {
+      completer.completeError(error, stackTrace);
+      return false;
+    }
+
+    int expectedContentLength = response.contentLength;
+    if (expectedContentLength == -1) expectedContentLength = null;
+
+    int bytesReceived = 0;
+    StreamSubscription<List<int>> subscription;
+    subscription = response.listen((List<int> chunk) {
+      out.add(chunk);
+      if (chunkEvents != null) {
+        bytesReceived += chunk.length;
+        try {
+          chunkEvents.add(ImageChunkEvent(
+            cumulativeBytesLoaded: bytesReceived,
+            expectedTotalBytes: expectedContentLength),
+          );
+        } catch (error, stackTrace) {
+          completer.completeError(error, stackTrace);
+          subscription.cancel();
+          return;
+        }
+      }
+    });
+
+    Future _writeHeaders() async {
       // write response headers
       RandomAccessFile raf;
       try {
@@ -67,18 +107,31 @@ class CachedHttp {
       } finally {
         raf?.close();
       }
-      return true;
-    } catch (e) {
-      await out?.close();
-      deleteFile(tmpFile);
-      print('HttpCache download $url: $e');
-      return false;
     }
+
+    try {
+      await subscription.asFuture();
+      await out?.close();
+      await _writeHeaders();
+      await tmpFile.rename(file.path);
+      completer.complete(true);
+    } catch (error, stackTrace) {
+      deleteFile(tmpFile);
+      completer.completeError(error, stackTrace);
+      completer.complete(false);
+    }
+    return completer.future;
   }
 
-  Future<dynamic> getAsJson(String url, {String method,
-      Map<String, String> headers, CheckCacheHeaders checkCache}) async {
-    final file = await getFile(url, method: method, headers: headers, checkCache: checkCache);
+  Future<dynamic> getAsJson(String url,
+                            {String method, Map<String, String> headers, bool autoCompress = true,
+                            CheckCacheHeaders checkCache}) async {
+    final file = await getFile(url,
+      method: method,
+      headers: headers,
+      autoCompress: autoCompress,
+      checkCache: checkCache,
+    );
     dynamic result;
     IOSink out;
     try {
@@ -131,8 +184,10 @@ class CachedHttp {
     return null;
   }
 
-  Future<File> getFile(String url, {String method,
-      Map<String, String> headers, CheckCacheHeaders checkCache}) async {
+  Future<File> getFile(String url,
+                      {String method, Map<String, String> headers, bool autoCompress = false,
+                      StreamController<ImageChunkEvent> chunkEvents,
+                      CheckCacheHeaders checkCache}) async {
     final item = await _lock.synchronized(() => _loading.putIfAbsent(url, () => _Item(url)));
     final file = await cache.getFile(item.key);
     final downloaded = await item.lock.synchronized(() async {
@@ -144,16 +199,23 @@ class CachedHttp {
       } catch (e) {
         print('HttpCache check $url: $e');
       }
-      return downloadFile(url, file, method: method, headers: headers);
+      return downloadFile(url, file,
+        method: method,
+        headers: headers,
+        autoCompress: autoCompress,
+        chunkEvents: chunkEvents,
+      );
     });
     _loading.remove(url);
     if (downloaded) cache.update(item.key, file);
     return file;
   }
 
-  Future<HttpClientResponse> openUrl(String url, {String method,
-      Map<String, String> headers}) async {
-    final request = await HttpClient().openUrl(method ?? 'GET', Uri.parse(url));
+  Future<HttpClientResponse> openUrl(String url,
+                                    {String method, Map<String, String> headers,
+                                    bool autoCompress = false}) async {
+    final httpClient = HttpClient()..autoUncompress = autoCompress;
+    final request = await httpClient.openUrl(method ?? 'GET', Uri.parse(url));
     headers?.forEach((k, v) => request.headers.add(k, v));
     return request.close();
   }
