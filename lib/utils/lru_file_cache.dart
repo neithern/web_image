@@ -31,7 +31,6 @@ class LruFileCache {
 	static const _offsetOfSize = _8Bytes;
   static const _offsetOfTime = _8Bytes * 2;
 	static const _itemBytes = _8Bytes * 3;
-  static const _fakeTime = 0x7FFFFFFFFFFFFFFF;
 
   final _cache = LinkedHashMap<int, int>(); // key: hash of url, value: position in index file
   final _lock = Lock(reentrant: true);
@@ -90,7 +89,8 @@ class LruFileCache {
       _maxPosition = position;
 
       // resort the access order by time
-      array.sort((a1, a2) => (a1?.elementAt(1) ?? _fakeTime) - (a2?.elementAt(1) ?? _fakeTime));
+      final now = DateTime.now().millisecondsSinceEpoch;
+      array.sort((a1, a2) => (a1?.elementAt(1) ?? now) - (a2?.elementAt(1) ?? now));
       for (final item in array) {
         if (item != null) _positionFromCacheNoLock(item[0]);
         else break;

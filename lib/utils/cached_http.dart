@@ -13,7 +13,7 @@ import 'lru_file_cache.dart';
 typedef bool CheckCacheHeaders(Map<String, String> responseHeaders);
 
 class CachedHttp {
-  static const defaultMaxSize = 200 * 1024 * 1024;
+  static const defaultMaxSize = 500 * 1000 * 1000;
 
   static const _magicJson = 0x6E6F736A; // 'json'
   static const _pathSub = '/http_cache';
