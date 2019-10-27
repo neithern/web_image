@@ -46,68 +46,61 @@ class LruFileCache {
   int get count => _cache.length;
   int get size => _size;
 
-  Future open() async { 
-    return _lock.synchronized(() async {
-      if (! await directory.exists())
-        await directory.create(recursive: true);
+  Future open() async => _lock.synchronized(() async {
+    if (! await directory.exists())
+      await directory.create(recursive: true);
 
-      final watch = Stopwatch()..start();
-      _indexFile = await File(directory.path + _indexName).open(mode: FileMode.append);
-      await _indexFile.setPosition(0);
+    final watch = Stopwatch()..start();
+    _indexFile = await File(directory.path + _indexName).open(mode: FileMode.append);
+    await _indexFile.setPosition(0);
 
-      final length = await _indexFile.length();
-      final array = List<Uint64List>(length ~/ _itemBytes);
-      final buffer = Uint8List(_itemBytes * min(array.length, 1024));
-      int bytesInBuffer = 0;
-      int offsetInBuffer = 0;
-      int count = 0;
-      int position = 0;
-      _size = 0;
-      _maxPosition = 0;
-      while (position + _itemBytes <= length) {
-        if (offsetInBuffer >= bytesInBuffer) {
-          bytesInBuffer = await _indexFile.readInto(buffer);
-          offsetInBuffer = 0;
-          if (bytesInBuffer < _itemBytes) break;
-        }
-        final u64s = buffer.buffer.asUint64List(offsetInBuffer, 3);
-        final size = u64s[1]; // size
-        if (size > 0) {
-          final item = Uint64List(2);
-          final key = item[0] = u64s[0]; // key
-          item[1] = u64s[2]; // time
-          array[count++] = item;
-          _cache[key] = position;
-          _size += size;
-        } else {
-          // size is 0, it was marked as deleted
-          _recycledPositions.add(position);
-        }
-        offsetInBuffer += _itemBytes;
-        position += _itemBytes;
+    final length = await _indexFile.length();
+    final items = List<Uint64List>(length ~/ _itemBytes);
+    final buffer = Uint8List(_itemBytes * min(items.length, 2048));
+    int bytesInBuffer = 0;
+    int offsetInBuffer = 0;
+    int count = 0;
+    int position = 0;
+    _size = 0;
+    _maxPosition = 0;
+    while (position + _itemBytes <= length) {
+      if (offsetInBuffer >= bytesInBuffer) {
+        offsetInBuffer = 0;
+        bytesInBuffer = await _indexFile.readInto(buffer);
+        if (bytesInBuffer < _itemBytes) break;
       }
-      _maxPosition = position;
-
-      // resort the access order by time
-      final now = DateTime.now().millisecondsSinceEpoch;
-      array.sort((a1, a2) => (a1?.elementAt(1) ?? now) - (a2?.elementAt(1) ?? now));
-      for (final item in array) {
-        if (item != null) _positionFromCacheNoLock(item[0]);
-        else break;
+      final u64s = buffer.buffer.asUint64List(offsetInBuffer, 3);
+      final size = u64s[1]; // size
+      if (size > 0) {
+        final item = Uint64List(2);
+        final key = item[0] = u64s[0]; // key
+        item[1] = u64s[2]; // time
+        items[count++] = item;
+        _cache[key] = position;
+        _size += size;
+      } else {
+        // size is 0, it was marked as deleted
+        _recycledPositions.add(position);
       }
-      print('DiskCache load used ${watch.elapsedMilliseconds} ms, total ${_cache.length} items $_size bytes');
-    });
-  }
+      offsetInBuffer += _itemBytes;
+      position += _itemBytes;
+    }
+    _maxPosition = position;
 
-  Future close() async {
-    return _lock.synchronized(() async {
-      await _indexFile.close();
-      _maxPosition = 0;
-      _size = 0;
-      _cache.clear();
-      _recycledPositions.clear();
-    });
-  }
+    // sort the access order by time
+    final list = items.sublist(0, count);
+    list.sort((item1, item2) => item1[1] - item2[1]);
+    list.forEach((item) => _positionFromCacheNoLock(item[0]));
+    print('LruFileCache load used ${watch.elapsedMilliseconds} ms, total ${_cache.length} items $_size bytes');
+  });
+
+  Future close() async => _lock.synchronized(() async {
+    await _indexFile.close();
+    _maxPosition = 0;
+    _size = 0;
+    _cache.clear();
+    _recycledPositions.clear();
+  });
 
   Future clear() async {
     await close();
@@ -115,18 +108,16 @@ class LruFileCache {
     await open();
   }
 
-  Future<File> getFile(int key) async {
-    return _lock.synchronized(() async {
-      final position = _positionFromCacheNoLock(key);
-      if (position != null) {
-        final values = Uint64List(1);
-        values[0] = DateTime.now().millisecondsSinceEpoch;
-        await _indexFile.setPosition(position + _offsetOfTime);
-        await _indexFile.writeFrom(values.buffer.asUint8List());
-      }
-      return _cacheFileForKey(key);
-    });
-  }
+  Future<File> getFile(int key) async => _lock.synchronized(() async {
+    final position = _positionFromCacheNoLock(key);
+    if (position != null) {
+      final values = Uint64List(1);
+      values[0] = DateTime.now().millisecondsSinceEpoch;
+      await _indexFile.setPosition(position + _offsetOfTime);
+      await _indexFile.writeFrom(values.buffer.asUint8List());
+    }
+    return _cacheFileForKey(key);
+  });
 
   Future update(int key, File file) async {
     int _newPosition() {
@@ -161,7 +152,7 @@ class LruFileCache {
   File _cacheFileForKey(int key) => File(directory.path + '/' + key.toRadixString(16));
 
   int _positionFromCacheNoLock(int key) {
-    // removing the key and adding it again will make it be last in the iteration order
+    // removing the key and adding it again to make it be last in the iteration order
     int position = _cache.remove(key);
     if (position != null) _cache[key] = position;
     return position;
@@ -202,7 +193,7 @@ class LruFileCache {
     final fileInfo = getIndexFile(file);
     await deleteFile(file);
     await deleteFile(fileInfo);
-    print('DiskCache remove: $size bytes of ${key.toRadixString(16)}, total ${_cache.length} items $_size bytes');
+    print('LruFileCache remove: $size bytes of ${key.toRadixString(16)}, total ${_cache.length} items $_size bytes');
     return size;
   }
 
@@ -210,11 +201,9 @@ class LruFileCache {
     final values = Uint64List(1);
     _indexFile.setPositionSync(position + _offsetOfSize);
     _indexFile.readIntoSync(values.buffer.asUint8List());
-    // print('DiskCache find: ${values[0]} bytes');
+    // print('LruFileCache find: ${values[0]} bytes');
     return values[0];
   }
 
-  static File getIndexFile(File file) {
-    return File(file.path + '.i');
-  }
+  static File getIndexFile(File file) => File(file.path + '.i');
 }
