@@ -117,7 +117,7 @@ class CachedHttp {
     } catch (error, stackTrace) {
       deleteFile(tmpFile);
       completer.completeError(error, stackTrace);
-      completer.complete(false);
+      return false;
     }
     return completer.future;
   }
