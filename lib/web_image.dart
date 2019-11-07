@@ -42,9 +42,9 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
   }
 
   @override
-  ImageStreamCompleter load(WebImageProvider key) {
+  ImageStreamCompleter load(WebImageProvider key, DecoderCallback decode) {
     final chunkEvents = StreamController<ImageChunkEvent>();
-    final codec = _loadAsync(key, chunkEvents);
+    final codec = _loadAsync(key, decode, chunkEvents);
     return (shrink ?? true)
       ? ShrinkImageStreamCompleter(codec, key, width: width, height: height, scale: scale, chunkEvents: chunkEvents.stream)
       : MultiFrameImageStreamCompleter(codec: codec, scale: scale, chunkEvents: chunkEvents.stream);
@@ -67,7 +67,7 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
   @override
   String toString() => '$runtimeType($url, ${width}x$height@$scale)';
 
-  static Future<ui.Codec> _loadAsync(WebImageProvider key, StreamController<ImageChunkEvent> chunkEvents) async {
+  static Future<ui.Codec> _loadAsync(WebImageProvider key, DecoderCallback decode, StreamController<ImageChunkEvent> chunkEvents) async {
     // print('load web image: ${key.url}');
     final http = await CachedHttp.singleton();
     final file = await http.getFile(key.url, headers: key.headers, autoCompress: false, chunkEvents: chunkEvents);
@@ -83,26 +83,23 @@ class WebImageProvider extends ImageProvider<WebImageProvider> {
     }
 
     final density = ui.window.devicePixelRatio;
-    final targetWidth = key.width != null ? (key.width * density).round() : null;
-    final targetHeight = key.height != null ? (key.height * density).round() : null;
+    final cacheWidth = key.width != null ? (key.width * density).round() : null;
+    final cacheHeight = key.height != null ? (key.height * density).round() : null;
 
     // need only one to keep aspect ratio
-    var result = await _instantiateImageCodec(key, data,
-                        targetWidth: targetWidth,
-                        targetHeight: targetWidth == null ? targetHeight : null);
+    var result = await _instantiateImageCodec(key, decode, data,
+                        cacheWidth: cacheWidth,
+                        cacheHeight: cacheWidth == null ? cacheHeight : null);
     if (result != null) return result;
-    else if (targetWidth != null || targetHeight != null)
-      result = await _instantiateImageCodec(key, data);
+    else if (cacheWidth != null || cacheHeight != null)
+      result = await _instantiateImageCodec(key, decode, data);
     return result;
   }
 
-  static Future<ui.Codec> _instantiateImageCodec(WebImageProvider key, Uint8List data,
-                          {int targetWidth, int targetHeight}) async {
+  static Future<ui.Codec> _instantiateImageCodec(WebImageProvider key, DecoderCallback decode, Uint8List data,
+                          {int cacheWidth, int cacheHeight}) async {
     try {
-      return await ui.instantiateImageCodec(data,
-        targetWidth: targetWidth,
-        targetHeight: targetHeight,
-      );
+      return await decode(data, cacheWidth: cacheWidth, cacheHeight: cacheHeight);
     } catch (e) {
       print('load image failed: ${key.url}, ${key.width}x${key.height}@${key.scale}, $e');
     }
