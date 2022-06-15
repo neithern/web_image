@@ -55,7 +55,7 @@ class LruFileCache {
     await _indexFile.setPosition(0);
 
     final length = await _indexFile.length();
-    final items = List<Uint64List>(length ~/ _itemBytes);
+    final items = List<Uint64List>.filled(length ~/ _itemBytes, null);
     final buffer = Uint8List(_itemBytes * min(items.length, 2048));
     int bytesInBuffer = 0;
     int offsetInBuffer = 0;

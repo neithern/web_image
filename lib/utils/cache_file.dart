@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:convert';
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'buffer_io.dart';
 import 'cached_http.dart';
@@ -285,18 +288,37 @@ class CacheIndex {
     return headerSize[0];
   }
 
-  static Future<int> writeHeaders(String url, Map<String, String> headers, RandomAccessFile raf) async {
-    final writer = BufferWriter();
-    writer.putUint32(0); // empty size of header, fix it later
-    writer.putString(url);
-    writer.putSize(headers.length);
-    for (final entry in headers.entries) {
-      writer.putString(entry.key);
-      writer.putString(entry.value);
+  static void putSizeToWriteBuffer(WriteBuffer buffer, int value) {
+    assert(0 <= value && value <= 0xffffffff);
+    if (value < 254) {
+      buffer.putUint8(value);
+    } else if (value <= 0xffff) {
+      buffer.putUint8(254);
+      buffer.putUint16(value);
+    } else {
+      buffer.putUint8(255);
+      buffer.putUint32(value);
     }
-    final data = writer.doneToBytes();
+  }
+
+  static void putStringToWriteBuffer(WriteBuffer buffer, String value) {
+    final data = utf8.encoder.convert(value);
+    putSizeToWriteBuffer(buffer, data.length);
+    buffer.putUint8List(data);
+  }
+
+  static Future<int> writeHeaders(String url, Map<String, String> headers, RandomAccessFile raf) async {
+    final buffer = WriteBuffer();
+    buffer.putUint32(0); // empty size of header, fix it later
+    putStringToWriteBuffer(buffer, url);
+    putSizeToWriteBuffer(buffer, headers.length);
+    for (final entry in headers.entries) {
+      putStringToWriteBuffer(buffer, entry.key);
+      putStringToWriteBuffer(buffer, entry.value);
+    }
+    final data = buffer.done();
     data.buffer.asUint32List(0, 4)[0] = data.lengthInBytes; // fix the size of header
-    await raf.writeFrom(data);
+    await raf.writeFrom(data.buffer.asUint8List(0, data.lengthInBytes));
     return data.lengthInBytes;
   }
 }

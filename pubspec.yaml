@@ -1,7 +1,6 @@
 name: web_image
 description: A flutter package for web image and lru file cache.
 version: 0.0.1
-author: nanling.z@gmail.com
 homepage: github.com/neithern
 
 environment:
@@ -11,8 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
 
-  path_provider: ^1.3.0
-  synchronized: ^1.5.3
+  path_provider: ^2.0.0
+  synchronized: ^3.0.0
 
 dev_dependencies:
   flutter_test:

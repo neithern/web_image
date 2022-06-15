@@ -24,7 +24,7 @@ Future testPersistValues() async {
   for (int i = kCount; i < kCount2; i++) {
     values.setString(i.toString(), i.toString());
   }
-  final list = List<String>(kCount);
+  final list = List<String>.filled(kCount, null);
   for (int i = 0; i < list.length; i++)
     list[i] = i.toString();
   values.setStringList('list', list);

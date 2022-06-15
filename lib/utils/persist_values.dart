@@ -99,7 +99,7 @@ class PersistValues {
         list = _cache[key] = list.cast<T>().toList();
       return list;
     } catch (_) {
-      List<T> list = _cache[key] = List<T>();
+      List<T> list = _cache[key] = List<T>.empty(growable: true);
       return list;
     }
   }
